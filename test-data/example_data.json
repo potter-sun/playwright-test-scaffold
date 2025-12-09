@@ -1,0 +1,47 @@
+{
+  "page_info": {
+    "url": "/example",
+    "type": "FORM"
+  },
+  "valid_data": {
+    "username": "testuser",
+    "password": "TestPass123!",
+    "email": "test@example.com"
+  },
+  "invalid_data": {
+    "username": "",
+    "password": "123",
+    "email": "invalid-email"
+  },
+  "boundary_data": {
+    "username": {
+      "empty": "",
+      "min": "a",
+      "max": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "special": "@#$%^&*()",
+      "unicode": "中文テスト"
+    },
+    "password": {
+      "empty": "",
+      "min": "a",
+      "max": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "email": {
+      "min": "a@b.c",
+      "max": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@example.com"
+    }
+  },
+  "test_accounts": {
+    "default": {
+      "username": "testuser",
+      "email": "test@example.com",
+      "password": "TestPass123!"
+    },
+    "admin": {
+      "username": "admin",
+      "email": "admin@example.com",
+      "password": "AdminPass123!"
+    }
+  }
+}
+

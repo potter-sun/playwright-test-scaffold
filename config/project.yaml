@@ -1,0 +1,141 @@
+# ═══════════════════════════════════════════════════════════════
+# Playwright Test Scaffold - Project Configuration
+# ═══════════════════════════════════════════════════════════════
+# 用户配置文件：根据项目需求修改此文件
+
+# ─────────────────────────────────────────────────────────────────
+# 项目基本信息
+# ─────────────────────────────────────────────────────────────────
+project:
+  name: "My Web Application"
+  description: "UI Automation Tests"
+  version: "1.0.0"
+
+# ─────────────────────────────────────────────────────────────────
+# 环境配置
+# ─────────────────────────────────────────────────────────────────
+environments:
+  # 默认环境
+  default: "dev"
+  
+  # 开发环境
+  dev:
+    base_url: "http://localhost:3000"
+    api_url: "http://localhost:8080/api"
+    description: "Development Environment"
+  
+  # 测试环境
+  staging:
+    base_url: "https://staging.example.com"
+    api_url: "https://staging-api.example.com"
+    description: "Staging Environment"
+  
+  # 生产环境
+  production:
+    base_url: "https://www.example.com"
+    api_url: "https://api.example.com"
+    description: "Production Environment"
+
+# ─────────────────────────────────────────────────────────────────
+# 浏览器配置
+# ─────────────────────────────────────────────────────────────────
+browser:
+  # 无头模式（true=不显示浏览器窗口，适合CI/CD）
+  headless: true
+  
+  # 操作延迟（毫秒，调试时设置较大值）
+  slow_mo: 0
+  
+  # 默认超时（毫秒）
+  timeout: 30000
+  
+  # 视口大小
+  viewport:
+    width: 1920
+    height: 1080
+  
+  # 浏览器类型（chromium, firefox, webkit）
+  type: "chromium"
+  
+  # 浏览器启动参数
+  args:
+    - "--disable-web-security"
+    - "--ignore-certificate-errors"
+    - "--allow-insecure-localhost"
+    - "--disable-gpu"
+    - "--no-sandbox"
+
+# ─────────────────────────────────────────────────────────────────
+# 测试配置
+# ─────────────────────────────────────────────────────────────────
+test:
+  # 失败重试次数
+  retry_count: 2
+  
+  # 隐式等待时间（秒）
+  implicit_wait: 10
+  
+  # 失败时截图
+  screenshot_on_failure: true
+  
+  # 视频录制
+  video_recording: false
+  
+  # 并行执行worker数量（auto=自动检测CPU核心数）
+  parallel_workers: "auto"
+
+# ─────────────────────────────────────────────────────────────────
+# 报告配置
+# ─────────────────────────────────────────────────────────────────
+reports:
+  # Allure报告
+  allure:
+    enabled: true
+    results_dir: "allure-results"
+    report_dir: "allure-report"
+  
+  # HTML报告
+  html:
+    enabled: true
+    output: "reports/test_report.html"
+  
+  # JSON报告
+  json:
+    enabled: true
+    output: "reports/test_report.json"
+
+# ─────────────────────────────────────────────────────────────────
+# 测试账号配置（可选）
+# ─────────────────────────────────────────────────────────────────
+test_accounts:
+  # 默认测试账号
+  default:
+    username: "testuser"
+    email: "test@example.com"
+    password: "TestPass123!"
+  
+  # 管理员账号
+  admin:
+    username: "admin"
+    email: "admin@example.com"
+    password: "AdminPass123!"
+
+# ─────────────────────────────────────────────────────────────────
+# 页面分析配置
+# ─────────────────────────────────────────────────────────────────
+analyzer:
+  # 是否需要登录后才能访问页面
+  requires_auth: false
+  
+  # 登录页面URL（如果requires_auth=true）
+  login_url: "/login"
+  
+  # 等待页面加载的时间（毫秒）
+  page_load_timeout: 10000
+  
+  # 忽略的元素选择器
+  ignore_selectors:
+    - ".cookie-banner"
+    - ".chat-widget"
+    - "#ad-container"
+
