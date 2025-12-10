@@ -20,8 +20,8 @@ environments:
   
   # 开发环境
   dev:
-    base_url: "http://localhost:3000"
-    api_url: "http://localhost:8080/api"
+    base_url: "https://localhost:3000"
+    api_url: "https://localhost:44320"
     description: "Development Environment"
   
   # 测试环境
@@ -128,7 +128,7 @@ analyzer:
   requires_auth: false
   
   # 登录页面URL（如果requires_auth=true）
-  login_url: "/login"
+  login_url: "/"
   
   # 等待页面加载的时间（毫秒）
   page_load_timeout: 10000

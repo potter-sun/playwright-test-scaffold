@@ -7,10 +7,10 @@ CLI工具 - 提供命令行接口进行测试自动化操作
 
 使用方式:
     # 分析页面
-    python cli.py analyze --url https://example.com/login
+    python cli.py analyze --url https://example.com/
     
     # 生成测试代码
-    python cli.py generate --url https://example.com/login
+    python cli.py generate --url https://example.com/
     
     # 运行测试
     python cli.py run --tests tests/

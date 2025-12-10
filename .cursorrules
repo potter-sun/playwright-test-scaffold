@@ -1,0 +1,336 @@
+# ═══════════════════════════════════════════════════════════════
+# Playwright Test Scaffold - Cursor Rules
+# ═══════════════════════════════════════════════════════════════
+# 自动化测试脚手架规范 - Cursor 对话时自动参考
+
+## 项目定位
+
+这是一个 **Playwright + Python 自动化测试脚手架**，用于快速生成：
+- Page Object 页面对象
+- Test Cases 测试用例
+- Test Data 测试数据
+- Allure Reports 测试报告
+
+## ⚠️ 代码生成前必读（Critical）
+
+**在生成任何 Page Object 或 Test Case 代码之前，必须先读取以下文件：**
+
+```
+必读文件（按顺序）：
+1. generators/test_plan_generator.py  → 测试计划模板
+2. generators/test_code_generator.py  → 代码模板（怎么写）
+3. utils/logger.py                    → Logger 使用方式
+```
+
+### 为什么？
+
+| 层次 | 文件 | 内容 | 作用 |
+|-----|-----|------|-----|
+| 高层规范 | `.cursorrules` | 规范概要 | 告诉你「要有什么」 |
+| **具体模板** | `generators/*.py` | 代码实现 | 告诉你「怎么写」 |
+
+### 关键实现细节（在 generators/ 中定义）
+
+```python
+# ❌ 错误：在模块级别创建 logger
+from utils.logger import TestLogger
+logger = TestLogger("test_xxx")  # 所有测试共享同一个名称
+
+# ✅ 正确：在每个测试方法内部创建 logger，使用测试方法名
+from utils.logger import TestLogger
+
+def test_p0_page_load(self):
+    logger = TestLogger("test_p0_page_load")  # 每个方法用自己的名称
+    logger.start()
+    logger.checkpoint("xxx", True)
+    logger.end(success=True)
+
+# ✅ @allure.title() 只显示测试方法名，不加 TC-XX-XXX
+@allure.title("test_p0_page_load")  # ✅ 简洁
+@allure.title("TC-CP-001: xxx")     # ❌ 冗余
+```
+
+### 检查清单
+
+生成代码前确认：
+- [ ] 已读取 `generators/test_code_generator.py`
+- [ ] 已读取 `utils/logger.py` 了解 `TestLogger` 用法
+- [ ] 已查看 `pages/` 目录现有 Page Object 风格
+- [ ] 测试方法命名使用 `test_p{0,1,2}_xxx` 格式
+- [ ] **TestLogger 在每个测试方法内部创建，使用测试方法名**
+- [ ] **@allure.title() 只写测试方法名（如 `test_p0_page_load`）**
+- [ ] 测试方法包含 `logger.start()` / `logger.checkpoint()` / `logger.end()`
+
+> **教训**：曾因只读 `.cursorrules` 而忽略 `generators/` 中的具体模板，
+> 导致生成的代码不符合项目规范，需要二次修改。
+
+## 核心架构
+
+```
+playwright-test-scaffold/
+├── core/           # 核心框架
+│   ├── base_page.py      # 页面对象基类
+│   ├── page_utils.py     # 页面工具类
+│   └── fixtures.py       # pytest fixtures
+├── generators/     # 代码生成器
+│   ├── page_analyzer.py      # 页面分析器
+│   ├── test_code_generator.py # 测试代码生成
+│   └── test_plan_generator.py # 测试计划生成
+├── pages/          # Page Objects
+├── tests/          # Test Cases
+├── test-data/      # 测试数据
+└── config/         # 配置文件
+```
+
+## 生成规范
+
+### 1. Page Object 规范
+
+```python
+from core.base_page import BasePage
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+class XxxPage(BasePage):
+    """
+    页面对象类
+    
+    职责：封装页面元素和操作，提供业务级接口
+    """
+    
+    # ═══════════════════════════════════════════════════════════════
+    # SELECTORS - 元素选择器常量
+    # ═══════════════════════════════════════════════════════════════
+    
+    ELEMENT_NAME = "selector"  # 元素描述
+    
+    # 页面配置
+    URL = "/path"
+    page_loaded_indicator = "selector"
+    
+    # ═══════════════════════════════════════════════════════════════
+    # NAVIGATION - 导航方法
+    # ═══════════════════════════════════════════════════════════════
+    
+    def navigate(self) -> None:
+        """导航到页面"""
+        logger.info(f"导航到 Xxx 页面")
+        self.goto(self.URL)
+        self.wait_for_page_load()
+    
+    def is_loaded(self) -> bool:
+        """检查页面是否加载完成"""
+        return self.is_visible(self.page_loaded_indicator, timeout=5000)
+    
+    # ═══════════════════════════════════════════════════════════════
+    # ACTIONS - 操作方法（带日志）
+    # ═══════════════════════════════════════════════════════════════
+    
+    def fill_xxx(self, value: str) -> None:
+        """填写 xxx 字段"""
+        logger.info(f"填写 xxx: {value}")
+        self.fill(self.XXX_INPUT, value)
+```
+
+### 2. Test Case 规范（Allure 集成）
+
+```python
+import pytest
+import allure
+from pages.xxx_page import XxxPage
+from utils.logger import TestLogger
+
+
+def attach_expected(expectations: list[str]) -> None:
+    """附加预期目标到 Allure 报告"""
+    content = "\n".join(f"✓ {exp}" for exp in expectations)
+    allure.attach(content, name="预期目标", attachment_type=allure.attachment_type.TEXT)
+
+
+@allure.feature("功能模块")
+class TestXxx:
+    """测试类"""
+    
+    @pytest.fixture(autouse=True)
+    def setup(self, page):
+        self.page = page
+        self.xxx_page = XxxPage(page)
+    
+    @pytest.mark.P0
+    @pytest.mark.functional
+    @allure.story("用户故事")
+    @allure.title("test_p0_xxx")  # ⚠️ 只写测试方法名，不加 TC-XX-XXX
+    @allure.description("""
+    **测试目的**: 验证什么功能
+    
+    **前置条件**:
+    - 条件1
+    - 条件2
+    
+    **测试步骤**:
+    1. 步骤描述
+    2. 步骤描述
+    """)
+    def test_p0_xxx(self):  # 命名: test_p{优先级}_xxx
+        """测试描述"""
+        # ⚠️ 每个方法内部创建 logger，使用测试方法名
+        logger = TestLogger("test_p0_xxx")
+        logger.start()
+        
+        # 1. 附加预期目标
+        attach_expected([
+            "预期结果1",
+            "预期结果2",
+        ])
+        
+        # 2. 步骤执行 + 关键步骤截图
+        with allure.step("Step 1: 步骤描述"):
+            self.xxx_page.take_screenshot("tc_xx_001_before")
+            # 执行操作
+            logger.checkpoint("检查点描述", True)
+            self.xxx_page.take_screenshot("tc_xx_001_after")
+        
+        # 3. 断言
+        with allure.step("Step N: 验证结果"):
+            assert condition, "断言失败信息"
+            self.xxx_page.take_screenshot("tc_xx_001_result")
+        
+        logger.end(success=True)
+```
+
+### 3. 截图命名规范
+
+```
+tc_{page}_{case}_{timing}.png
+
+page:   页面缩写 (login, profile, order...)
+case:   用例编号 (001, 002, 101...)
+timing: 时机标记
+
+timing 可选值:
+├── initial      # 初始状态
+├── before_xxx   # 操作前
+├── after_xxx    # 操作后
+├── result       # 最终结果
+├── error        # 错误状态
+└── fullpage     # 全页截图
+```
+
+### 4. 测试优先级
+
+| 标记 | 含义 | 场景 |
+|------|------|------|
+| P0 | 核心功能 | 主流程、关键路径 |
+| P1 | 重要功能 | 输入验证、边界值 |
+| P2 | 一般功能 | UI样式、可访问性 |
+
+### 5. 测试类型标记
+
+```python
+@pytest.mark.functional   # 功能测试
+@pytest.mark.validation   # 验证测试
+@pytest.mark.exception    # 异常测试
+@pytest.mark.ui           # UI测试
+@pytest.mark.security     # 安全测试
+@pytest.mark.performance  # 性能测试
+```
+
+## CLI 工具
+
+```bash
+# 分析页面
+python cli.py analyze --url <URL>
+
+# 生成测试计划
+python cli.py plan --url <URL>
+
+# 生成测试代码
+python cli.py generate --url <URL>
+
+# 完整流程（分析 + 计划 + 代码）
+python cli.py full --url <URL>
+
+# 运行测试
+python cli.py run --tests tests/ -n 4
+
+# 查看报告
+python cli.py report
+```
+
+## 对话指令处理
+
+当用户说以下类型的指令时，按照上述规范生成代码：
+
+### 生成测试脚本
+```
+"帮我生成 xxx 页面的测试脚本"
+"为 xxx 功能创建测试用例"
+"测试 xxx 页面"
+```
+→ 生成 Page Object + Test Cases，包含完整的 Allure 集成
+
+### 生成 Page Object
+```
+"创建 xxx 页面对象"
+"帮我写 xxx 页面的 Page Object"
+```
+→ 仅生成 Page Object 类
+
+### 运行测试
+```
+"运行 xxx 测试"
+"执行测试，使用 N 个 worker"
+```
+→ 构建 pytest 命令并执行
+
+### 分析页面
+```
+"分析 xxx 页面"
+"看看 xxx 页面有哪些元素"
+```
+→ 调用 PageAnalyzer 分析页面结构
+
+## 测试数据
+
+测试账号数据位于 `test-data/test_account_pool.json`
+
+使用方式：
+```python
+def test_xxx(self, test_account):
+    """使用 test_account fixture 获取测试账号"""
+    username = test_account["username"]
+    password = test_account["password"]
+```
+
+## Allure 报告必备元素
+
+生成测试代码时**必须**包含：
+
+1. `@allure.feature()` - 功能模块
+2. `@allure.story()` - 用户故事
+3. `@allure.title()` - **只写测试方法名**（如 `test_p0_page_load`，不加 TC-XX-XXX）
+4. `@allure.description()` - 测试描述（目的、前置条件、步骤）
+5. `attach_expected()` - 预期目标
+6. `with allure.step()` - 步骤追踪
+7. `take_screenshot()` - 关键步骤截图
+
+### Allure 标题规范
+
+```python
+# ✅ 正确：只写测试方法名
+@allure.title("test_p0_page_load")
+@allure.title("test_p1_input_validation")
+
+# ❌ 错误：包含 TC 编号
+@allure.title("TC-CP-001: 页面加载验证")
+@allure.title("test_p0_page_load | TC-CP-001: 页面加载验证")
+```
+
+## 代码风格
+
+- 中文注释，英文代码
+- 使用 ASCII 风格分块注释
+- 文件不超过 400 行
+- 函数职责单一
