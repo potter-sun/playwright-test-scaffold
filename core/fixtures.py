@@ -139,10 +139,43 @@ def test_account():
             password = test_account["password"]
     """
     return config.get("test_accounts.default", {
-        "username": "testuser",
-        "email": "test@example.com",
+        "username": "qatest__030",
+        "email": "qatest__030@testmail.com",
         "password": "TestPass123!"
     })
+
+
+# ═══════════════════════════════════════════════════════════════
+# LOGIN FIXTURES
+# ═══════════════════════════════════════════════════════════════
+
+@pytest.fixture(scope="function")
+def logged_in_page(page: Page, test_account) -> Page:
+    """
+    已登录的页面fixture - 自动执行登录流程
+    
+    使用方式:
+        def test_change_password(logged_in_page):
+            # logged_in_page 已经登录完成
+            logged_in_page.goto("/admin/profile/change-password")
+    """
+    from pages.login_page import LoginPage
+    
+    login_page = LoginPage(page)
+    login_page.navigate()
+    
+    # 执行登录
+    login_page.login(
+        username=test_account["username"],
+        password=test_account["password"]
+    )
+    
+    logger.info(f"已登录账号: {test_account['username']}")
+    
+    yield page
+    
+    # 测试结束后可选择登出
+    # login_page.logout()
 
 
 # ═══════════════════════════════════════════════════════════════

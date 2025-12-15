@@ -1,12 +1,20 @@
 # Playwright Test Scaffold - Architecture
 
-> 架构文档 - 记录系统设计决策与模块职责
+> AI 驱动的自动化测试脚手架 - 架构文档
+
+## 使用方式
+
+**本项目只通过 AI 对话交互**，用自然语言描述需求，AI 自动完成：
+- 分析页面结构
+- 生成 Page Object
+- 生成测试用例
+- 执行测试
+- 查看报告
 
 ## 目录结构
 
 ```
 playwright-test-scaffold/
-├── cli.py                        # 命令行入口
 ├── conftest.py                   # pytest 根配置
 ├── pytest.ini                    # pytest 配置
 ├── requirements.txt              # 依赖清单
@@ -22,24 +30,21 @@ playwright-test-scaffold/
 │
 ├── generators/                   # 代码生成引擎
 │   ├── __init__.py
-│   ├── utils.py                  # 🆕 公共工具 - 命名转换/元素提取
+│   ├── utils.py                  # 公共工具 - 命名转换/元素提取
 │   ├── page_analyzer.py          # 页面分析器 - Playwright 快照分析
 │   ├── test_plan_generator.py    # 测试计划生成 - Markdown 文档
 │   └── test_code_generator.py    # 代码生成 - Page Object + Tests
 │
-├── pages/                        # Page Object 实现层 (自动生成/手动编写)
-│   ├── __init__.py
-│   └── example_page.py
+├── pages/                        # Page Object 实现层
+│   └── *.py
 │
-├── tests/                        # 测试用例层 (自动生成/手动编写)
-│   ├── __init__.py
-│   └── test_example.py
+├── tests/                        # 测试用例层
+│   └── test_*.py
 │
 ├── test-data/                    # 测试数据 (JSON)
-│   └── example_data.json
+│   └── test_account_pool.json    # 测试账号池
 │
 ├── utils/                        # 工具模块
-│   ├── __init__.py
 │   ├── config.py                 # 配置管理器 - 单例，YAML + ENV
 │   └── logger.py                 # 日志系统
 │
@@ -54,34 +59,12 @@ playwright-test-scaffold/
 
 ## 模块职责
 
-### `generators/utils.py` (公共工具)
-
-提取自 `test_plan_generator.py` 和 `test_code_generator.py` 的重复代码。
-
-| 函数 | 职责 |
-|------|------|
-| `to_snake_case()` | 转换为蛇形命名 |
-| `to_class_name()` | 转换为 PascalCase |
-| `to_constant_name()` | 转换为 CONSTANT_CASE |
-| `get_page_name_from_url()` | 从 URL 提取页面名称 |
-| `get_file_name_from_url()` | 从 URL 提取文件名 |
-| `get_tc_prefix_from_url()` | 生成测试用例前缀 |
-| `get_element_name()` | 获取元素显示名称 |
-| `get_element_constant_name()` | 获取元素常量名 |
-| `get_element_description()` | 获取元素描述 |
-
 ### `generators/page_analyzer.py` (页面分析器)
 
 - 使用 Playwright 获取页面快照
 - 自动识别页面类型 (LOGIN, FORM, LIST...)
 - 提取可交互元素 (input, button, link, select)
 - 输出 `PageInfo` 数据结构
-
-### `generators/test_plan_generator.py` (测试计划生成)
-
-- 输入: `PageInfo`
-- 输出: Markdown 格式测试计划
-- 包含: 页面概述、元素映射、P0/P1/P2 测试用例、测试数据设计
 
 ### `generators/test_code_generator.py` (代码生成)
 
@@ -105,15 +88,14 @@ playwright-test-scaffold/
 
 ## 设计原则
 
-1. **DRY** - 公共逻辑提取到 `generators/utils.py`
-2. **单一职责** - 每个模块只做一件事
-3. **开闭原则** - 新增页面类型无需修改核心代码
+1. **AI 优先** - 所有操作通过自然语言对话完成
+2. **DRY** - 公共逻辑提取到 `generators/utils.py`
+3. **单一职责** - 每个模块只做一件事
 4. **模板方法** - `BasePage` 定义骨架，子类实现细节
 
 ## 变更日志
 
 | 日期 | 变更 |
 |------|------|
+| 2025-12-15 | 移除 CLI，改为纯 AI 对话驱动 |
 | 2025-12-09 | 创建 `generators/utils.py`，重构生成器消除代码重复 |
-| 2025-12-09 | `test_plan_generator.py`: 607行 → ~280行 |
-| 2025-12-09 | `test_code_generator.py`: 755行 → ~320行 |

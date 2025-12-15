@@ -110,8 +110,8 @@ reports:
 test_accounts:
   # 默认测试账号
   default:
-    username: "testuser"
-    email: "test@example.com"
+    username: "qatest__030"
+    email: "qatest__030@testmail.com"
     password: "TestPass123!"
   
   # 管理员账号
