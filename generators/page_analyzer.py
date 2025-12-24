@@ -1,47 +1,35 @@
-# ═══════════════════════════════════════════════════════════════
-# Playwright Test Scaffold - Page Analyzer
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
+# Playwright Test Scaffold - Page Analyzer (Coordinator)
+# ═══════════════════════════════════════════════════════════════════
 """
-页面分析器 - 自动分析页面结构和元素
-使用Playwright获取页面快照，识别可交互元素
+页面分析器 - 协调器
+
+职责：
+- 使用 Playwright 打开页面（支持带登录态 storage_state）
+- 提取可交互元素/表单/导航信息
+- 粗略识别页面类型（LOGIN/FORM/SETTINGS/...）
+
+额外（为“可审计的动态分析”服务）：
+- 可选把动态分析产物落盘：DOM、截图、a11y snapshot
+  这类产物等价于你在 Cursor/Playwright MCP 里看到的“动态结构快照”，
+  用于让 CLI 链路也能复现/审阅分析过程。
 """
+
+import re
+import json
+import os
+from dataclasses import asdict
+from pathlib import Path
+from typing import Dict, Optional, Callable, Any
 
 from playwright.sync_api import sync_playwright, Page
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, field, asdict
+
+from generators.page_types import PageInfo
+from generators.element_extractor import ElementExtractor
 from utils.logger import get_logger
 from utils.config import ConfigManager
-import json
-import re
 
 logger = get_logger(__name__)
-
-
-@dataclass
-class PageElement:
-    """页面元素"""
-    selector: str
-    tag: str
-    type: str  # input, button, link, select, etc.
-    text: str = ""
-    placeholder: str = ""
-    name: str = ""
-    id: str = ""
-    role: str = ""
-    required: bool = False
-    disabled: bool = False
-    attributes: Dict[str, str] = field(default_factory=dict)
-
-
-@dataclass
-class PageInfo:
-    """页面信息"""
-    url: str
-    title: str
-    page_type: str  # LOGIN, FORM, LIST, DETAIL, DASHBOARD, SETTINGS
-    elements: List[PageElement] = field(default_factory=list)
-    forms: List[Dict] = field(default_factory=list)
-    navigation: List[Dict] = field(default_factory=list)
 
 
 class PageAnalyzer:
@@ -97,14 +85,26 @@ class PageAnalyzer:
     def __init__(self):
         """初始化分析器"""
         self.config = ConfigManager()
+        self.extractor = ElementExtractor()
     
-    def analyze(self, url: str, auth_callback: callable = None) -> PageInfo:
+    def analyze(
+        self,
+        url: str,
+        auth_callback: Optional[Callable[[Page], None]] = None,
+        storage_state_path: Optional[str] = None,
+        artifacts_dir: Optional[str] = None,
+        headless: bool = True,
+        timeout_ms: int = 60000,
+    ) -> PageInfo:
         """
         分析页面
         
         Args:
             url: 页面URL
             auth_callback: 认证回调函数（如果页面需要登录）
+            storage_state_path: 登录态缓存文件（Playwright storage_state.json）
+            headless: 是否启用无头模式
+            timeout_ms: 页面导航超时（毫秒）
             
         Returns:
             PageInfo: 页面信息
@@ -112,11 +112,20 @@ class PageAnalyzer:
         logger.info(f"开始分析页面: {url}")
         
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(
-                viewport={"width": 1920, "height": 1080},
-                ignore_https_errors=True
-            )
+            browser = p.chromium.launch(headless=headless)
+
+            context_kwargs: Dict = {
+                "viewport": {"width": 1920, "height": 1080},
+                "ignore_https_errors": True,
+            }
+            if storage_state_path:
+                sp = Path(storage_state_path)
+                if sp.exists() and sp.stat().st_size > 0:
+                    context_kwargs["storage_state"] = str(sp)
+                else:
+                    logger.warning(f"storage_state 不存在或为空: {storage_state_path}（将以未登录态分析）")
+
+            context = browser.new_context(**context_kwargs)
             page = context.new_page()
             
             try:
@@ -125,8 +134,21 @@ class PageAnalyzer:
                     auth_callback(page)
                 
                 # 导航到页面
-                page.goto(url, wait_until="networkidle", timeout=30000)
+                resp = page.goto(url, wait_until="networkidle", timeout=timeout_ms)
                 page.wait_for_timeout(2000)
+
+                # 可选：落盘动态分析产物（便于审计/复盘）
+                try:
+                    status = resp.status if resp is not None else None
+                except Exception:
+                    status = None
+                self._dump_artifacts(
+                    page,
+                    requested_url=url,
+                    final_url=(page.url or ""),
+                    response_status=status,
+                    artifacts_dir=artifacts_dir,
+                )
                 
                 # 分析页面
                 page_info = self._analyze_page(page, url)
@@ -136,6 +158,80 @@ class PageAnalyzer:
                 
             finally:
                 browser.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # Artifacts (dynamic snapshot)
+    # ═══════════════════════════════════════════════════════════════
+
+    def _dump_artifacts(
+        self,
+        page: Page,
+        *,
+        requested_url: str,
+        final_url: str,
+        response_status: Optional[int],
+        artifacts_dir: Optional[str],
+    ) -> None:
+        """
+        将动态分析的关键证据落盘，避免“黑盒分析”。
+
+        产物：
+        - dom.html: 当前页面 DOM
+        - screenshot.png: 当前页面截图
+        - a11y.json: Playwright accessibility snapshot（结构化）
+
+        注意：
+        - 任何落盘失败都不应影响测试生成主流程（记录 warning 即可）。
+        """
+        if not artifacts_dir:
+            return
+
+        try:
+            out_dir = Path(artifacts_dir).expanduser()
+            out_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logger.warning(f"创建 artifacts_dir 失败: {artifacts_dir} err={e}")
+            return
+
+        def _safe_write_text(name: str, text: str) -> None:
+            try:
+                (out_dir / name).write_text(text or "", encoding="utf-8")
+            except Exception as e:
+                logger.warning(f"写入 {name} 失败: {e}")
+
+        def _safe_write_json(name: str, obj: Any) -> None:
+            try:
+                (out_dir / name).write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
+            except Exception as e:
+                logger.warning(f"写入 {name} 失败: {e}")
+
+        try:
+            _safe_write_text("requested_url.txt", (requested_url or "") + "\n")
+            _safe_write_text("final_url.txt", (final_url or "") + "\n")
+            _safe_write_text("response_status.txt", (str(response_status) if response_status is not None else "") + "\n")
+            _safe_write_text("title.txt", (page.title() or "") + "\n")
+        except Exception:
+            pass
+
+        # DOM
+        try:
+            _safe_write_text("dom.html", page.content())
+        except Exception as e:
+            logger.warning(f"导出 DOM 失败: {e}")
+
+        # Screenshot
+        try:
+            page.screenshot(path=str(out_dir / "screenshot.png"), full_page=True)
+        except Exception as e:
+            logger.warning(f"导出截图失败: {e}")
+
+        # Accessibility snapshot
+        try:
+            a11y = page.accessibility.snapshot()
+            _safe_write_json("a11y.json", a11y)
+        except Exception as e:
+            # 某些页面/浏览器版本可能不支持或会抛异常
+            logger.warning(f"导出 a11y snapshot 失败: {e}")
     
     def _analyze_page(self, page: Page, url: str) -> PageInfo:
         """
@@ -154,13 +250,13 @@ class PageAnalyzer:
         page_type = self._detect_page_type(page, url)
         
         # 获取元素
-        elements = self._get_elements(page)
+        elements = self.extractor._get_elements(page)
         
         # 获取表单信息
-        forms = self._get_forms(page)
+        forms = self.extractor._get_forms(page)
         
         # 获取导航信息
-        navigation = self._get_navigation(page)
+        navigation = self.extractor._get_navigation(page)
         
         return PageInfo(
             url=url,
@@ -202,237 +298,7 @@ class PageAnalyzer:
         best_type = max(scores, key=scores.get)
         return best_type if scores[best_type] > 0 else "FORM"
     
-    def _get_elements(self, page: Page) -> List[PageElement]:
-        """
-        获取页面元素
-        
-        Args:
-            page: Playwright页面对象
-            
-        Returns:
-            List[PageElement]: 元素列表
-        """
-        elements = []
-        
-        # 获取输入框
-        inputs = self._get_inputs(page)
-        elements.extend(inputs)
-        
-        # 获取按钮
-        buttons = self._get_buttons(page)
-        elements.extend(buttons)
-        
-        # 获取链接
-        links = self._get_links(page)
-        elements.extend(links)
-        
-        # 获取下拉框
-        selects = self._get_selects(page)
-        elements.extend(selects)
-        
-        return elements
-    
-    def _get_inputs(self, page: Page) -> List[PageElement]:
-        """获取输入框元素"""
-        elements = []
-        
-        # 各种输入类型
-        input_types = [
-            "input[type='text']",
-            "input[type='email']",
-            "input[type='password']",
-            "input[type='number']",
-            "input[type='tel']",
-            "input[type='url']",
-            "input[type='search']",
-            "input:not([type])",
-            "textarea",
-        ]
-        
-        for selector in input_types:
-            try:
-                locators = page.locator(selector).all()
-                for i, loc in enumerate(locators):
-                    try:
-                        element = self._extract_element_info(loc, "input")
-                        if element:
-                            elements.append(element)
-                    except:
-                        pass
-            except:
-                pass
-        
-        return elements
-    
-    def _get_buttons(self, page: Page) -> List[PageElement]:
-        """获取按钮元素"""
-        elements = []
-        
-        button_selectors = [
-            "button",
-            "input[type='submit']",
-            "input[type='button']",
-            "[role='button']",
-        ]
-        
-        for selector in button_selectors:
-            try:
-                locators = page.locator(selector).all()
-                for loc in locators:
-                    try:
-                        element = self._extract_element_info(loc, "button")
-                        if element:
-                            elements.append(element)
-                    except:
-                        pass
-            except:
-                pass
-        
-        return elements
-    
-    def _get_links(self, page: Page) -> List[PageElement]:
-        """获取链接元素"""
-        elements = []
-        
-        try:
-            locators = page.locator("a[href]").all()
-            for loc in locators:
-                try:
-                    element = self._extract_element_info(loc, "link")
-                    if element:
-                        elements.append(element)
-                except:
-                    pass
-        except:
-            pass
-        
-        return elements
-    
-    def _get_selects(self, page: Page) -> List[PageElement]:
-        """获取下拉框元素"""
-        elements = []
-        
-        try:
-            locators = page.locator("select").all()
-            for loc in locators:
-                try:
-                    element = self._extract_element_info(loc, "select")
-                    if element:
-                        elements.append(element)
-                except:
-                    pass
-        except:
-            pass
-        
-        return elements
-    
-    def _extract_element_info(self, locator, element_type: str) -> Optional[PageElement]:
-        """
-        提取元素信息
-        
-        Args:
-            locator: Playwright定位器
-            element_type: 元素类型
-            
-        Returns:
-            PageElement: 元素信息
-        """
-        try:
-            tag = locator.evaluate("el => el.tagName.toLowerCase()")
-            
-            # 获取选择器
-            element_id = locator.get_attribute("id") or ""
-            element_name = locator.get_attribute("name") or ""
-            element_class = locator.get_attribute("class") or ""
-            
-            # 构建选择器
-            if element_id:
-                selector = f"#{element_id}"
-            elif element_name:
-                selector = f"[name='{element_name}']"
-            elif element_class:
-                first_class = element_class.split()[0] if element_class else ""
-                selector = f"{tag}.{first_class}" if first_class else tag
-            else:
-                selector = tag
-            
-            return PageElement(
-                selector=selector,
-                tag=tag,
-                type=element_type,
-                text=locator.text_content() or "",
-                placeholder=locator.get_attribute("placeholder") or "",
-                name=element_name,
-                id=element_id,
-                role=locator.get_attribute("role") or "",
-                required=locator.get_attribute("required") is not None,
-                disabled=locator.get_attribute("disabled") is not None,
-                attributes={
-                    "type": locator.get_attribute("type") or "",
-                    "maxlength": locator.get_attribute("maxlength") or "",
-                    "pattern": locator.get_attribute("pattern") or "",
-                }
-            )
-        except Exception as e:
-            logger.debug(f"提取元素信息失败: {e}")
-            return None
-    
-    def _get_forms(self, page: Page) -> List[Dict]:
-        """获取表单信息"""
-        forms = []
-        
-        try:
-            form_locators = page.locator("form").all()
-            for form_loc in form_locators:
-                try:
-                    form_info = {
-                        "id": form_loc.get_attribute("id") or "",
-                        "action": form_loc.get_attribute("action") or "",
-                        "method": form_loc.get_attribute("method") or "GET",
-                        "inputs": [],
-                    }
-                    
-                    # 获取表单内的输入框
-                    inputs = form_loc.locator("input, textarea, select").all()
-                    for inp in inputs:
-                        form_info["inputs"].append({
-                            "name": inp.get_attribute("name") or "",
-                            "type": inp.get_attribute("type") or "text",
-                            "required": inp.get_attribute("required") is not None,
-                        })
-                    
-                    forms.append(form_info)
-                except:
-                    pass
-        except:
-            pass
-        
-        return forms
-    
-    def _get_navigation(self, page: Page) -> List[Dict]:
-        """获取导航信息"""
-        navigation = []
-        
-        nav_selectors = ["nav a", "header a", ".navbar a", ".menu a", ".nav a"]
-        
-        for selector in nav_selectors:
-            try:
-                links = page.locator(selector).all()
-                for link in links:
-                    try:
-                        nav_item = {
-                            "text": link.text_content() or "",
-                            "href": link.get_attribute("href") or "",
-                        }
-                        if nav_item["text"] and nav_item["href"]:
-                            navigation.append(nav_item)
-                    except:
-                        pass
-            except:
-                pass
-        
-        return navigation
-    
+
     def to_dict(self, page_info: PageInfo) -> Dict:
         """转换为字典"""
         return {
